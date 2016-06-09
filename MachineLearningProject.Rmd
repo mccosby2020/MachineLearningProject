@@ -1,0 +1,116 @@
+---
+title: "Excercise Classifications using Smart Device data"
+author: "Vincent Amedekah"
+date: "June 6, 2016"
+output: html_document
+---
+
+**Background**
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+**Data**
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: http://groupware.les.inf.puc-rio.br/har.
+
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+First, we download the dataset to be used for the analysis;
+
+```{r echo = TRUE}
+## custom function for downloading and reading csv files
+downloadcsv <- function(url, nastrings) {
+    temp <- tempfile()
+    download.file(url, temp)
+    data <- read.csv(temp, na.strings = nastrings)
+    unlink(temp)
+    return(data)
+}
+
+trainurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+train <- downloadcsv(trainurl, c("", "NA", "#DIV/0!"))
+
+testurl <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+test <- downloadcsv(testurl, c("", "NA", "#DIV/0!"))
+dim(train)
+table(train$classe)
+```
+The training data has 19622 observations and 160 features, and the distribution of the five measured classes are shown in the table above. 
+
+**Preprocessing**
+
+We partition our training data into a training set and a validation set so that we can validate our model before applying it to the test data.
+```{r echo = TRUE}
+set.seed(123)
+suppressMessages(library(caret))
+trainset <- createDataPartition(train$classe, p = 0.8, list = FALSE)
+Training <- train[trainset, ]
+Validation <- train[-trainset, ]
+```
+**Feature selection**
+
+First we clean up near zero variance features, columns with missing values and descriptive fields.
+
+```{r echo = TRUE}
+# exclude near zero variance features
+nzvcol <- nearZeroVar(Training)
+Training <- Training[, -nzvcol]
+
+# exclude columns with 40% more missing values exclude descriptive columns
+
+cntlength <- sapply(Training, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+
+nullcol <- names(cntlength[cntlength < 0.6 * length(Training$classe)])
+descriptcol <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window")
+excludecols <- c(descriptcol, nullcol)
+Training <- Training[, !names(Training) %in% excludecols]
+```
+
+**Model Train**
+
+We will use random forest as our model in the random forest package.
+```{r echo = TRUE}
+suppressMessages(library(randomForest))
+rfModel <- randomForest(classe ~ ., data = Training, importance = TRUE, ntrees = 10)
+```
+
+**Model Validation**
+
+Let's test our model performance on the training set itself and the cross validation set.
+
+ **training set accuracy**
+```{r echo =TRUE}
+ptraining <- predict(rfModel, Training)
+print(confusionMatrix(ptraining, Training$classe))
+```
+
+We see our model performing very accurate with all predictions correct against the training set.
+**validationg set accuracy**
+```{r echo=TRUE}
+pvalidation <- predict(rfModel, Validation)
+print(confusionMatrix(pvalidation, Validation$classe))
+```
+Prediction for the cross validation also shows our model perfroms almost accurate with few misses
+
+**Test set prediction**
+```{r echo = TRUE}
+ptest <- predict(rfModel, test)
+ptest
+```
+
+Save the test prediction to a file
+```{r echo = TRUE}
+ writeLines(as.character(ptest),"prediction.txt",sep="\n")
+```
+
